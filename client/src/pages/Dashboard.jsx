@@ -130,16 +130,17 @@ export default function Dashboard() {
       </div>
 
       {/* Search */}
-      <div style={{ position: 'relative', marginBottom: 22 }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#555', fontSize: 13 }}>🔍</span>
+      <div style={{ marginBottom: 22 }}>
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Buscar operações..."
           style={{
             width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a',
-            borderRadius: 8, padding: '10px 12px 10px 36px', color: '#ccc',
+            borderRadius: 999, padding: '11px 20px', color: '#ccc',
             fontSize: 14, outline: 'none', boxSizing: 'border-box',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            letterSpacing: '0.01em',
           }}
         />
       </div>
@@ -310,8 +311,9 @@ function KanbanColumn({ col, operations, isOver, isColOver, isDraggingCol, onCar
 
 function OperationCard({ op, onDragStart, onDragEnd, onDelete, onClick, onUpdateNotes }) {
   const [notes, setNotes] = useState(op.notes || '')
-  const timer = useRef(null)
+  const [hovered, setHovered] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const timer = useRef(null)
 
   function handleNotesChange(e) {
     const v = e.target.value
@@ -325,33 +327,44 @@ function OperationCard({ op, onDragStart, onDragEnd, onDelete, onClick, onUpdate
   return (
     <div
       draggable
-      onDragStart={e => { setIsDragging(true); onDragStart(); }}
+      onDragStart={e => { setIsDragging(true); onDragStart() }}
       onDragEnd={() => { setIsDragging(false); onDragEnd() }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        background: '#212121', border: '1px solid #2e2e2e', borderRadius: 10,
-        padding: '12px 14px', cursor: 'grab', userSelect: 'none',
-        opacity: isDragging ? 0.5 : 1, transition: 'opacity 0.15s',
+        background: hovered && !isDragging ? '#272727' : '#212121',
+        border: `1px solid ${hovered && !isDragging ? '#3a3a3a' : '#2e2e2e'}`,
+        borderRadius: 12,
+        padding: '16px 16px',
+        cursor: 'grab',
+        userSelect: 'none',
+        opacity: isDragging ? 0.45 : 1,
+        transform: hovered && !isDragging ? 'translateY(-2px)' : 'translateY(0)',
+        boxShadow: hovered && !isDragging
+          ? '0 8px 24px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3)'
+          : '0 1px 3px rgba(0,0,0,0.2)',
+        transition: 'transform 0.15s, box-shadow 0.15s, background 0.15s, border-color 0.15s, opacity 0.15s',
       }}
     >
       {/* Name */}
       <div
         onClick={onClick}
-        style={{ fontWeight: 700, color: '#fff', fontSize: 15, marginBottom: 10, cursor: 'pointer' }}
+        style={{ fontWeight: 700, color: '#fff', fontSize: 15, marginBottom: 12, cursor: 'pointer', lineHeight: 1.3 }}
       >
         {op.name}
       </div>
 
       {/* Black store */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-        <span style={{ width: 12, height: 12, borderRadius: '50%', border: '1.5px solid #555', flexShrink: 0, display: 'inline-block' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+        <span style={{ width: 13, height: 13, borderRadius: '50%', border: '1.5px solid #555', flexShrink: 0, display: 'inline-block' }} />
         <span style={{ color: '#777', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {op.black_store}
         </span>
       </div>
 
       {/* White store */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <span style={{ color: '#555', fontSize: 13 }}>→</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
+        <span style={{ color: '#555', fontSize: 14, lineHeight: 1 }}>→</span>
         <span style={{ color: '#777', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {op.white_store}
         </span>
