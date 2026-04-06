@@ -29,6 +29,8 @@ export async function initDB() {
       black_store_id INTEGER NOT NULL,
       white_store_id INTEGER NOT NULL,
       status TEXT DEFAULT 'active' CHECK(status IN ('active', 'paused')),
+      column_name TEXT DEFAULT 'AQUECENDO',
+      notes TEXT DEFAULT '',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (black_store_id) REFERENCES stores(id),
       FOREIGN KEY (white_store_id) REFERENCES stores(id)

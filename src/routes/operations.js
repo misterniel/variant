@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db/database.js'
 import { syncProducts, installCheckoutScript } from '../services/productSync.js'
+import { shopifyClient } from '../services/shopify.js'
 
 const router = Router()
 
@@ -42,12 +43,15 @@ router.post('/', async (req, res) => {
   res.status(201).json(operation)
 })
 
-// PATCH /api/operations/:id/status
-router.patch('/:id/status', async (req, res) => {
-  const { status } = req.body
-  if (!['active', 'paused'].includes(status))
-    return res.status(400).json({ error: 'Status inválido' })
-  await run('UPDATE operations SET status = ? WHERE id = ?', [status, req.params.id])
+// PATCH /api/operations/:id
+router.patch('/:id', async (req, res) => {
+  const { status, column_name, notes, name } = req.body
+  const op = await getOne('SELECT * FROM operations WHERE id = ?', [req.params.id])
+  if (!op) return res.status(404).json({ error: 'Operação não encontrada' })
+  await run(
+    'UPDATE operations SET status = ?, column_name = ?, notes = ?, name = ? WHERE id = ?',
+    [status ?? op.status, column_name ?? op.column_name, notes ?? op.notes, name ?? op.name, req.params.id]
+  )
   res.json({ success: true })
 })
 
@@ -84,6 +88,42 @@ router.get('/:id/logs', async (req, res) => {
     [req.params.id]
   )
   res.json(logs)
+})
+
+// GET /api/operations/:id/products — products from both stores side by side
+router.get('/:id/products', async (req, res) => {
+  const operation = await getOne('SELECT * FROM operations WHERE id = ?', [req.params.id])
+  if (!operation) return res.status(404).json({ error: 'Operação não encontrada' })
+
+  const blackStore = await getOne('SELECT * FROM stores WHERE id = ?', [operation.black_store_id])
+  const whiteStore = await getOne('SELECT * FROM stores WHERE id = ?', [operation.white_store_id])
+
+  const mappings = await getAll('SELECT * FROM product_mappings WHERE operation_id = ?', [req.params.id])
+
+  try {
+    const [blackProducts, whiteProducts] = await Promise.all([
+      shopifyClient(blackStore.shop_domain, blackStore.access_token).getProducts(),
+      shopifyClient(whiteStore.shop_domain, whiteStore.access_token).getProducts(),
+    ])
+
+    const whiteById = {}
+    for (const p of whiteProducts) whiteById[String(p.id)] = p
+
+    const result = blackProducts.map((bp, index) => {
+      const mapping = mappings.find(m => m.black_product_id === String(bp.id))
+      const wp = mapping ? whiteById[mapping.white_product_id] : null
+      return {
+        index: index + 1,
+        black: { id: bp.id, title: bp.title, image: bp.images?.[0]?.src, price: bp.variants?.[0]?.price, variants: bp.variants },
+        white: wp ? { id: wp.id, title: wp.title, image: wp.images?.[0]?.src, price: wp.variants?.[0]?.price, variants: wp.variants } : null,
+        mapped: !!mapping,
+      }
+    })
+
+    res.json({ products: result, black_store: blackStore.shop_domain, white_store: whiteStore.shop_domain })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // GET /api/operations/:id/mappings

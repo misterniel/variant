@@ -1,115 +1,240 @@
-import React, { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import React, { useEffect, useState, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import AddOperationModal from '../components/AddOperationModal.jsx'
 
-const s = {
-  heading: { fontSize: 24, fontWeight: 700, color: '#fff', marginBottom: 8 },
-  sub: { color: '#666', marginBottom: 32, fontSize: 14 },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 32 },
-  card: { background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 12, padding: 20 },
-  cardLabel: { color: '#666', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' },
-  cardValue: { color: '#fff', fontSize: 28, fontWeight: 700 },
-  alert: { background: '#1a2a1a', border: '1px solid #2a4a2a', borderRadius: 8, padding: '12px 16px', color: '#4ade80', fontSize: 14, marginBottom: 24 },
-  alertError: { background: '#2a1a1a', border: '1px solid #4a2a2a', borderRadius: 8, padding: '12px 16px', color: '#f87171', fontSize: 14, marginBottom: 24 },
-  section: { marginBottom: 32 },
-  sectionTitle: { color: '#fff', fontSize: 16, fontWeight: 600, marginBottom: 16 },
-  table: { width: '100%', borderCollapse: 'collapse' },
-  th: { textAlign: 'left', padding: '10px 12px', color: '#666', fontSize: 12, borderBottom: '1px solid #2a2a2a', textTransform: 'uppercase' },
-  td: { padding: '12px 12px', fontSize: 14, borderBottom: '1px solid #1e1e1e', color: '#ccc' },
-  badge: (color) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, background: color === 'green' ? '#1a2a1a' : color === 'blue' ? '#1a1a2a' : '#2a2a1a', color: color === 'green' ? '#4ade80' : color === 'blue' ? '#818cf8' : '#fbbf24' }),
-  emptyState: { textAlign: 'center', padding: '48px 24px', color: '#666' },
-  cta: { display: 'inline-block', marginTop: 16, padding: '10px 20px', background: '#6366f1', color: '#fff', borderRadius: 8, textDecoration: 'none', fontSize: 14 },
-}
+const COLUMNS = ['AQUECENDO', 'PRÉ ESCALA', 'ESCALA', 'BLOCK']
+const PURPLE = '#7c3aed'
 
 export default function Dashboard() {
-  const [stores, setStores] = useState([])
   const [operations, setOperations] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [showModal, setShowModal] = useState(false)
+  const [dragId, setDragId] = useState(null)
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
 
-  const connected = searchParams.get('connected')
-  const error = searchParams.get('error')
+  useEffect(() => { loadOps() }, [])
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/auth/stores').then(r => r.json()),
-      fetch('/api/operations').then(r => r.json()),
-    ]).then(([s, o]) => {
-      setStores(s)
-      setOperations(o)
-      setLoading(false)
+  async function loadOps() {
+    const res = await fetch('/api/operations')
+    setOperations(await res.json())
+  }
+
+  async function moveToColumn(opId, col) {
+    await fetch(`/api/operations/${opId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ column_name: col }),
     })
-  }, [])
+    loadOps()
+  }
 
-  const blackStores = stores.filter(s => s.role === 'black')
-  const whiteStores = stores.filter(s => s.role === 'white')
-  const activeOps = operations.filter(o => o.status === 'active')
+  async function deleteOp(opId, e) {
+    e.stopPropagation()
+    if (!confirm('Excluir esta operação?')) return
+    await fetch(`/api/operations/${opId}`, { method: 'DELETE' })
+    loadOps()
+  }
+
+  const filtered = operations.filter(op =>
+    op.name.toLowerCase().includes(search.toLowerCase()) ||
+    op.black_store?.toLowerCase().includes(search.toLowerCase()) ||
+    op.white_store?.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
-    <div>
-      <h1 style={s.heading}>Dashboard</h1>
-      <p style={s.sub}>Visão geral das suas operações</p>
+    <div style={{ padding: '24px 28px', minHeight: '100vh' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+        <button
+          onClick={() => setShowModal(true)}
+          style={{
+            background: `linear-gradient(135deg, ${PURPLE}, #a855f7)`,
+            color: '#fff', border: 'none', borderRadius: 8,
+            padding: '9px 18px', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> Adicionar Operação
+        </button>
+      </div>
 
-      {connected && <div style={s.alert}>Loja conectada com sucesso!</div>}
-      {error === 'oauth_failed' && <div style={s.alertError}>Falha na autenticação. Verifique o Client ID e Secret.</div>}
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 24 }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#555', fontSize: 14 }}>🔍</span>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar operações..."
+          style={{
+            width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a',
+            borderRadius: 8, padding: '10px 12px 10px 36px', color: '#ccc',
+            fontSize: 14, outline: 'none',
+          }}
+        />
+      </div>
 
-      <div style={s.grid}>
-        <div style={s.card}>
-          <div style={s.cardLabel}>Lojas Black</div>
-          <div style={s.cardValue}>{blackStores.length}</div>
-        </div>
-        <div style={s.card}>
-          <div style={s.cardLabel}>Lojas White</div>
-          <div style={s.cardValue}>{whiteStores.length}</div>
-        </div>
-        <div style={s.card}>
-          <div style={s.cardLabel}>Operações Ativas</div>
-          <div style={s.cardValue}>{activeOps.length}</div>
-        </div>
-        <div style={s.card}>
-          <div style={s.cardLabel}>Produtos Sincronizados</div>
-          <div style={s.cardValue}>{operations.reduce((acc, o) => acc + (o.products_synced || 0), 0)}</div>
+      {/* Kanban */}
+      <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 16, alignItems: 'flex-start' }}>
+        {COLUMNS.map(col => {
+          const colOps = filtered.filter(op => (op.column_name || 'AQUECENDO') === col)
+          return (
+            <KanbanColumn
+              key={col}
+              title={col}
+              count={colOps.length}
+              operations={colOps}
+              onDragOver={e => e.preventDefault()}
+              onDrop={() => dragId && moveToColumn(dragId, col)}
+              onDragStart={id => setDragId(id)}
+              onDragEnd={() => setDragId(null)}
+              onDelete={deleteOp}
+              onCardClick={id => navigate(`/operation/${id}`)}
+              onUpdateNotes={(id, notes) => {
+                fetch(`/api/operations/${id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notes }),
+                })
+              }}
+            />
+          )
+        })}
+
+        {/* Nova Coluna placeholder */}
+        <div style={{
+          minWidth: 260, width: 260, border: '2px dashed #2a2a2a', borderRadius: 12,
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', padding: '32px 16px', color: '#444',
+          fontSize: 14, gap: 8, cursor: 'default',
+        }}>
+          <span style={{ fontSize: 24 }}>+</span>
+          <span>Nova Coluna</span>
         </div>
       </div>
 
-      {loading ? null : operations.length === 0 ? (
-        <div style={{ ...s.card, ...s.emptyState }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>🔗</div>
-          <div>Nenhuma operação criada ainda</div>
-          <Link to="/connect" style={s.cta}>Conectar primeira loja</Link>
-        </div>
-      ) : (
-        <div style={s.section}>
-          <div style={s.sectionTitle}>Operações Recentes</div>
-          <div style={s.card}>
-            <table style={s.table}>
-              <thead>
-                <tr>
-                  <th style={s.th}>Nome</th>
-                  <th style={s.th}>Loja Black</th>
-                  <th style={s.th}>Loja White</th>
-                  <th style={s.th}>Produtos</th>
-                  <th style={s.th}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {operations.map(op => (
-                  <tr key={op.id}>
-                    <td style={s.td}>{op.name}</td>
-                    <td style={s.td}>{op.black_store}</td>
-                    <td style={s.td}>{op.white_store}</td>
-                    <td style={s.td}>{op.products_synced}</td>
-                    <td style={s.td}>
-                      <span style={s.badge(op.status === 'active' ? 'green' : 'yellow')}>
-                        {op.status === 'active' ? 'Ativo' : 'Pausado'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {showModal && (
+        <AddOperationModal
+          onClose={() => setShowModal(false)}
+          onCreated={() => { setShowModal(false); loadOps() }}
+        />
       )}
+    </div>
+  )
+}
+
+function KanbanColumn({ title, count, operations, onDragOver, onDrop, onDragStart, onDragEnd, onDelete, onCardClick, onUpdateNotes }) {
+  return (
+    <div
+      style={{ minWidth: 270, width: 270, background: '#1a1a1a', borderRadius: 12, border: '1px solid #252525', display: 'flex', flexDirection: 'column' }}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {/* Column header */}
+      <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #222' }}>
+        <span style={{ color: '#555', fontSize: 13 }}>⠿</span>
+        <span style={{ color: '#aaa', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', flex: 1 }}>{title}</span>
+        <span style={{ background: '#252525', color: '#888', fontSize: 11, padding: '2px 7px', borderRadius: 10 }}>{count}</span>
+        <span style={{ color: '#444', cursor: 'pointer', fontSize: 16 }}>⋮</span>
+      </div>
+
+      {/* Cards */}
+      <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 120 }}>
+        {operations.length === 0 ? (
+          <div style={{ color: '#383838', fontSize: 13, textAlign: 'center', padding: '28px 0' }}>
+            Arraste operações aqui
+          </div>
+        ) : operations.map(op => (
+          <OperationCard
+            key={op.id}
+            op={op}
+            onDragStart={() => onDragStart(op.id)}
+            onDragEnd={onDragEnd}
+            onDelete={onDelete}
+            onClick={() => onCardClick(op.id)}
+            onUpdateNotes={onUpdateNotes}
+          />
+        ))}
+
+        {/* Add card button */}
+        <button style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', textAlign: 'left', padding: '6px 4px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 16 }}>+</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function OperationCard({ op, onDragStart, onDragEnd, onDelete, onClick, onUpdateNotes }) {
+  const [notes, setNotes] = useState(op.notes || '')
+  const notesTimer = useRef(null)
+
+  function handleNotesChange(e) {
+    const v = e.target.value
+    setNotes(v)
+    clearTimeout(notesTimer.current)
+    notesTimer.current = setTimeout(() => onUpdateNotes(op.id, v), 800)
+  }
+
+  const date = new Date(op.created_at).toLocaleDateString('pt-BR')
+
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      style={{
+        background: '#212121', border: '1px solid #2e2e2e', borderRadius: 10,
+        padding: '12px 14px', cursor: 'grab', userSelect: 'none',
+      }}
+    >
+      {/* Name */}
+      <div
+        onClick={onClick}
+        style={{ fontWeight: 700, color: '#fff', fontSize: 15, marginBottom: 10, cursor: 'pointer' }}
+      >
+        {op.name}
+      </div>
+
+      {/* Black store */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+        <span style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid #555', display: 'inline-block', flexShrink: 0 }} />
+        <span style={{ color: '#888', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {op.black_store}
+        </span>
+      </div>
+
+      {/* White store */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <span style={{ color: '#555', fontSize: 14, lineHeight: 1 }}>→</span>
+        <span style={{ color: '#888', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {op.white_store}
+        </span>
+      </div>
+
+      {/* Date */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+        <span style={{ color: '#555', fontSize: 11 }}>📅</span>
+        <span style={{ color: '#555', fontSize: 11 }}>{date}</span>
+      </div>
+
+      {/* Notes */}
+      <div style={{ background: '#1a1a1a', borderRadius: 7, padding: '8px 10px' }} onClick={e => e.stopPropagation()}>
+        <div style={{ color: '#555', fontSize: 10, letterSpacing: '0.06em', marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+          OBSERVAÇÕES <span>📋</span>
+        </div>
+        <textarea
+          value={notes}
+          onChange={handleNotesChange}
+          placeholder="Clique para adicionar observação"
+          rows={2}
+          style={{
+            width: '100%', background: 'none', border: 'none', outline: 'none',
+            color: '#666', fontSize: 12, resize: 'none', fontFamily: 'inherit',
+            cursor: 'text',
+          }}
+        />
+      </div>
     </div>
   )
 }
