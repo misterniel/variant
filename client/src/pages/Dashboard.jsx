@@ -11,6 +11,8 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false)
   const [dragOpId, setDragOpId] = useState(null)
   const [dragOverCol, setDragOverCol] = useState(null)
+  const [dragColId, setDragColId] = useState(null)
+  const [dragOverColId, setDragOverColId] = useState(null)
   const [newColName, setNewColName] = useState('')
   const [addingCol, setAddingCol] = useState(false)
   const [creatingCol, setCreatingCol] = useState(false)
@@ -66,6 +68,35 @@ export default function Dashboard() {
     loadAll()
   }
 
+  async function reorderColumns(fromId, toId) {
+    if (fromId === toId) return
+    const from = columns.find(c => c.id === fromId)
+    const to = columns.find(c => c.id === toId)
+    if (!from || !to) return
+
+    // Swap positions optimistically
+    const newCols = columns.map(c => {
+      if (c.id === fromId) return { ...c, position: to.position }
+      if (c.id === toId) return { ...c, position: from.position }
+      return c
+    }).sort((a, b) => a.position - b.position)
+    setColumns(newCols)
+
+    // Persist both
+    await Promise.all([
+      fetch(`/api/columns/${fromId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ position: to.position }),
+      }),
+      fetch(`/api/columns/${toId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ position: from.position }),
+      }),
+    ])
+  }
+
   async function updateNotes(opId, notes) {
     await fetch(`/api/operations/${opId}`, {
       method: 'PATCH',
@@ -117,18 +148,27 @@ export default function Dashboard() {
       <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 16, alignItems: 'flex-start' }}>
         {columns.map(col => {
           const colOps = filtered.filter(op => (op.column_name || columns[0]?.name) === col.name)
-          const isOver = dragOverCol === col.name
+          const isCardOver = dragOverCol === col.name && dragOpId
+          const isColOver = dragOverColId === col.id && dragColId && dragColId !== col.id
           return (
             <KanbanColumn
               key={col.id}
               col={col}
               operations={colOps}
-              isOver={isOver}
-              onDragOver={e => { e.preventDefault(); setDragOverCol(col.name) }}
-              onDragLeave={() => setDragOverCol(null)}
-              onDrop={() => { if (dragOpId) moveCard(dragOpId, col.name); setDragOverCol(null) }}
-              onDragStart={id => setDragOpId(id)}
-              onDragEnd={() => { setDragOpId(null); setDragOverCol(null) }}
+              isOver={isCardOver}
+              isColOver={isColOver}
+              isDraggingCol={dragColId === col.id}
+              // Card drag events
+              onCardDragOver={e => { e.preventDefault(); if (dragOpId) setDragOverCol(col.name) }}
+              onCardDragLeave={() => setDragOverCol(null)}
+              onCardDrop={() => { if (dragOpId) moveCard(dragOpId, col.name); setDragOverCol(null) }}
+              onCardDragStart={id => setDragOpId(id)}
+              onCardDragEnd={() => { setDragOpId(null); setDragOverCol(null) }}
+              // Column drag events
+              onColDragStart={() => { setDragColId(col.id) }}
+              onColDragEnd={() => { setDragColId(null); setDragOverColId(null) }}
+              onColDragOver={e => { e.preventDefault(); if (dragColId && dragColId !== col.id) setDragOverColId(col.id) }}
+              onColDrop={() => { if (dragColId) reorderColumns(dragColId, col.id); setDragColId(null); setDragOverColId(null) }}
               onDelete={deleteOp}
               onCardClick={id => navigate(`/operation/${id}`)}
               onUpdateNotes={updateNotes}
@@ -198,23 +238,31 @@ export default function Dashboard() {
   )
 }
 
-function KanbanColumn({ col, operations, isOver, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, onDelete, onCardClick, onUpdateNotes, onDeleteColumn }) {
+function KanbanColumn({ col, operations, isOver, isColOver, isDraggingCol, onCardDragOver, onCardDragLeave, onCardDrop, onCardDragStart, onCardDragEnd, onColDragStart, onColDragEnd, onColDragOver, onColDrop, onDelete, onCardClick, onUpdateNotes, onDeleteColumn }) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <div
+      draggable
+      onDragStart={e => { e.stopPropagation(); onColDragStart() }}
+      onDragEnd={onColDragEnd}
+      onDragOver={e => { onColDragOver(e); if (!isDraggingCol) onCardDragOver(e) }}
+      onDragLeave={() => { onCardDragLeave() }}
+      onDrop={e => { e.preventDefault(); if (isDraggingCol || !operations) onColDrop(); else onCardDrop() }}
       style={{
-        minWidth: 270, width: 270, background: isOver ? '#1f1f1f' : '#1a1a1a',
-        borderRadius: 12, border: `1px solid ${isOver ? '#3a3a3a' : '#252525'}`,
-        display: 'flex', flexDirection: 'column', transition: 'background 0.15s, border-color 0.15s',
+        minWidth: 270, width: 270,
+        background: isColOver ? '#222' : isOver ? '#1f1f1f' : '#1a1a1a',
+        borderRadius: 12,
+        border: `1px solid ${isColOver ? '#7c3aed55' : isOver ? '#3a3a3a' : '#252525'}`,
+        display: 'flex', flexDirection: 'column',
+        transition: 'background 0.15s, border-color 0.15s, opacity 0.15s',
+        opacity: isDraggingCol ? 0.45 : 1,
+        cursor: 'grab',
       }}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
     >
       {/* Header */}
       <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #222', position: 'relative' }}>
-        <span style={{ color: '#555', fontSize: 13 }}>⠿</span>
+        <span style={{ color: '#555', fontSize: 13, cursor: 'grab' }}>⠿</span>
         <span style={{ color: '#aaa', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', flex: 1 }}>{col.name}</span>
         <span style={{ background: '#252525', color: '#888', fontSize: 11, padding: '2px 7px', borderRadius: 10 }}>{operations.length}</span>
         <span
@@ -248,8 +296,8 @@ function KanbanColumn({ col, operations, isOver, onDragOver, onDragLeave, onDrop
           <OperationCard
             key={op.id}
             op={op}
-            onDragStart={() => onDragStart(op.id)}
-            onDragEnd={onDragEnd}
+            onDragStart={() => onCardDragStart(op.id)}
+            onDragEnd={onCardDragEnd}
             onDelete={onDelete}
             onClick={() => onCardClick(op.id)}
             onUpdateNotes={onUpdateNotes}
