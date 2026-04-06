@@ -8,6 +8,7 @@ import fs from 'fs'
 import authRoutes from './routes/auth.js'
 import operationsRoutes from './routes/operations.js'
 import checkoutRoutes from './routes/checkout.js'
+import columnsRoutes from './routes/columns.js'
 import { initDB } from './db/database.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -103,6 +104,7 @@ app.get('/checkout-script.js', (req, res) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/operations', operationsRoutes)
 app.use('/api/checkout', checkoutRoutes)
+app.use('/api/columns', columnsRoutes)
 
 // Serve React frontend
 const clientDist = path.join(__dirname, '../client/dist')

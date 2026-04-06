@@ -11,6 +11,8 @@ const DB_URL = process.env.DATABASE_URL || `file:${path.join(dataDir, 'variantsy
 
 export const db = createClient({ url: DB_URL })
 
+const DEFAULT_COLUMNS = ['AQUECENDO', 'PRÉ ESCALA', 'ESCALA', 'BLOCK']
+
 export async function initDB() {
   await db.executeMultiple(`
     CREATE TABLE IF NOT EXISTS stores (
@@ -53,6 +55,13 @@ export async function initDB() {
       FOREIGN KEY (product_mapping_id) REFERENCES product_mappings(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS board_columns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS sync_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       operation_id INTEGER NOT NULL,
@@ -63,6 +72,14 @@ export async function initDB() {
       FOREIGN KEY (operation_id) REFERENCES operations(id) ON DELETE CASCADE
     );
   `)
+
+  // Seed default columns if none exist
+  const existing = await db.execute('SELECT COUNT(*) as count FROM board_columns')
+  if (Number(existing.rows[0].count) === 0) {
+    for (let i = 0; i < DEFAULT_COLUMNS.length; i++) {
+      await db.execute({ sql: 'INSERT INTO board_columns (name, position) VALUES (?, ?)', args: [DEFAULT_COLUMNS[i], i] })
+    }
+  }
 }
 
 // Helper: returns first row or null
